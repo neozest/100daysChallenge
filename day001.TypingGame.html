@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upstream (Typing) Chart - 역류성 타자 차트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nanum Gothic', 'Inter', sans-serif;
+            overflow: hidden;
+            background-color: #f0e6d8;
+        }
+        .game-container {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            margin: 0 auto;
+            background-image: url('https://www.transparenttextures.com/patterns/rice-paper-2.png');
+            border: 5px solid #8B4513;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            position: relative; 
+        }
+        .word {
+            position: absolute;
+            padding: 8px 12px;
+            background-color: #fff8e1;
+            border: 1px solid #d4c0a1;
+            border-radius: 6px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            font-size: 1.1rem;
+            white-space: nowrap;
+            color: #5d4037;
+        }
+
+        .word.matched, .word.fade-out-effect { 
+            animation: fadeOutEffect 0.5s forwards;
+        }
+        .word.split-effect {
+            animation: splitEffect 0.6s forwards;
+        }
+        .word.explode-effect {
+            animation: explodeEffect 0.5s forwards;
+        }
+
+        @keyframes fadeOutEffect {
+            0% { opacity: 1; transform: scale(1.1) translateY(0); }
+            100% { opacity: 0; transform: scale(1.2) translateY(-20px); }
+        }
+        @keyframes splitEffect {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; }
+            100% { opacity: 0; transform: translateX(30px) rotate(15deg) scale(0.5); }
+        }
+        @keyframes explodeEffect {
+            0% { transform: scale(1.1); opacity: 1; }
+            50% { transform: scale(1.3) rotate(10deg); opacity: 0.7; }
+            100% { transform: scale(0.1) rotate(720deg); opacity: 0; }
+        }
+
+        .hearts-container span {
+            font-size: 1.5rem;
+            color: #e53e3e;
+            margin-right: 4px;
+        }
+        .message-box {
+            min-height: 80px; 
+            background-color: rgba(255, 255, 255, 0.85); 
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+            display: flex; 
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 5; 
+            position: relative; 
+        }
+        .heojun-img {
+            width: 60px; 
+            height: auto;
+            border-radius: 50%;
+            border: 2px solid #8B4513;
+            margin-bottom: 5px; 
+        }
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        button:active {
+            transform: translateY(1px); 
+        }
+        .start-button { background-color: #4CAF50; }
+        .start-button:hover { background-color: #45a049; }
+        .restart-button { background-color: #f44336; }
+        .restart-button:hover { background-color: #e53935; }
+        #ingameRestartButton {
+            position: absolute; top: 1rem; right: 1rem; font-size: 1.5rem; padding: 0.5rem; 
+            z-index: 20; background-color: rgba(239, 221, 193, 0.8); 
+            color: #8B4513; border: 1px solid #d4c0a1; line-height: 1; 
+        }
+        #ingameRestartButton:hover { background-color: rgba(239, 221, 193, 1); }
+        .quiz-button { background-color: #2196F3; margin: 0 5px; padding: 8px 15px; }
+        .quiz-button:hover { background-color: #1e88e5; }
+        #quizLoading { font-style: italic; color: #777; }
+        .loader {
+            border: 4px solid #f3f3f3; border-top: 4px solid #8B4513; 
+            border-radius: 50%; width: 20px; height: 20px;
+            animation: spin 1s linear infinite; margin: 5px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      
+        @media (max-width: 640px) {
+            .word { font-size: 1rem; padding: 6px 10px; }
+            .stats-bar > div { font-size: 0.9rem; }
+            .hearts-container span { font-size: 1.3rem; }
+            .message-box { font-size: 0.9rem; min-height: 70px; }
+            #wordInput { font-size: 1rem; padding: 8px; }
+            .game-title { font-size: 1.5rem; }
+            .quiz-button { padding: 6px 10px; font-size: 0.9rem;}
+            #ingameRestartButton { font-size: 1.25rem; top: 0.5rem; right: 0.5rem; }
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="bg-yellow-50 flex items-center justify-center min-h-screen">
+
+    <div id="gameContainer" class="game-container flex flex-col p-4 relative overflow-hidden hidden">
+        <button id="ingameRestartButton" class="rounded-full shadow-md" title="게임 다시 시작">🔄</button>
+        <h1 class="game-title text-3xl font-bold text-center text-amber-700 my-4">Upstream (Typing) Chart</h1>
+        <div class="stats-bar flex justify-between items-center mb-4 p-2 bg-amber-100 rounded-lg shadow">
+            <div class="text-lg">점수: <span id="score" class="font-bold">0</span></div>
+            <div id="heartsContainer" class="hearts-container"></div>
+        </div>
+        <div id="wordArea" class="flex-grow w-full relative border-2 border-dashed border-amber-400 rounded-md bg-white bg-opacity-50"></div>
+        <input type="text" id="wordInput" class="w-full p-3 mt-4 border-2 border-amber-600 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="여기에 입력하세요..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <div id="messageArea" class="message-box mt-4 text-center text-amber-800 text-sm">
+            <span id="mainMessageText">한약 이름이 떨어지기 전에 입력하세요!</span>
+             <div id="quizLoading" class="hidden"><div class="loader"></div>퀴즈 생성 중...</div>
+            <div id="quizSection" class="hidden mt-2 w-full"> 
+                <p id="quizText" class="font-semibold mb-1"></p>
+                <div id="quizOptions" class="flex justify-center"> 
+                    <button id="quizBtnO" class="quiz-button">O (맞다)</button>
+                    <button id="quizBtnX" class="quiz-button">X (아니다)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="startScreen" class="absolute inset-0 bg-amber-50 bg-opacity-90 flex flex-col items-center justify-center z-10">
+        <h2 class="text-4xl font-bold text-amber-700 mb-6">역류성 타자 차트</h2>
+        <img src="https://placehold.co/150x150/A52A2A/FFFFFF?text=허준&font=NanumGothic" alt="허준 아이콘" class="heojun-img mb-6 shadow-lg" onerror="this.onerror=null; this.src='https://placehold.co/150x150/A52A2A/FFFFFF?text=허준&font=NanumGothic';">
+        <p class="text-amber-700 mb-2 text-center px-4">하늘에서 떨어지는 한약 이름을 빠르게 입력하여<br>환자(?)의 마음을 안정시키세요!</p>
+        <p class="text-sm text-amber-600 mb-8">(가끔 어의 허준 선생님이 ✨특별한 도움✨을 주십니다)</p>
+        <button id="startButton" class="start-button px-8 py-3 text-xl">게임 시작</button>
+    </div>
+    <div id="gameOverScreen" class="absolute inset-0 bg-red-50 bg-opacity-95 flex-col items-center justify-center z-10 hidden">
+        <h2 class="text-4xl font-bold text-red-700 mb-4">게임 종료!</h2>
+        <p class="text-red-600 text-xl mb-2">최종 점수: <span id="finalScore" class="font-bold">0</span>점</p>
+        <p id="gameOverMessage" class="text-red-500 mb-6 text-center"></p>
+        <button id="restartButton" class="restart-button px-8 py-3 text-xl">다시 시작</button>
+    </div>
+
+    <script>
+        // DOM Elements
+        const gameContainer = document.getElementById('gameContainer');
+        const wordArea = document.getElementById('wordArea');
+        const scoreDisplay = document.getElementById('score');
+        const heartsContainer = document.getElementById('heartsContainer');
+        const wordInput = document.getElementById('wordInput');
+        const messageArea = document.getElementById('messageArea');
+        const mainMessageTextEl = document.getElementById('mainMessageText');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton'); 
+        const ingameRestartButton = document.getElementById('ingameRestartButton'); 
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const gameOverMessage = document.getElementById('gameOverMessage');
+        const quizSection = document.getElementById('quizSection');
+        const quizText = document.getElementById('quizText');
+        const quizOptions = document.getElementById('quizOptions');
+        const quizLoading = document.getElementById('quizLoading');
+        const quizBtnO = document.getElementById('quizBtnO');
+        const quizBtnX = document.getElementById('quizBtnX');
+
+        const herbWords = [
+            "감초", "인삼", "당귀", "황기", "백출", "복령", "숙지황", "천궁", "작약", "계피", "맥문동", "오미자", "구기자", "산수유",
+            "두충", "갈근", "방풍", "강활", "독활", "시호", "승마", "진피", "반하", "길경", "행인", "의이인", "목단피", "현호색",
+            "익모초", "홍화", "황금", "황련", "대황", "지모", "석고", "죽엽", "하고초", "우슬", "속단", "위령선", "해동피", "모과",
+            "천마", "조구등", "백강잠", "전갈", "녹용", "웅담", "사향",
+            "김종연", "정희범", "메디스트림", "공진단", "경옥고", "수", "메디블랙" 
+        ];
+        const comicScenarios = [
+            "엇, 손가락이 꼬였군요! 다음엔 잘하실 수 있을 겁니다.", "이런, 약재가 땅에 떨어지다니! 원장님께 혼나겠어요.",
+            "타자 연습도 하고, 한의학 공부도 하고! 일석이조인데요?", "집중! 집중! 옆자리 김선비가 졸고 있군요.",
+            "방금 입력한 약재, 맛은 정말... 크윽! 몸에는 좋겠죠?", "허리가 뻐근하군요. 스트레칭 한번 하시죠!",
+            "원장님 몰래 홍삼 스틸 성공?! (점수 +10)", "옆집 강아지가 자꾸 짖네요. '안신지황탕'이 필요하려나...",
+            "이 많은 약재를 언제 다 외울까요? 게임으로 외워봅시다!", "타자 속도가 빨라지셨어요! 혹시 전생에 의원이셨는지?"
+        ];
+        const heojunMessages = { 
+            itemPrefix: "어의 허준 등장! ✨", 
+            itemSuffix: " (하트 +1 ❤️)",
+            encouragement: [ 
+                "허준: '훌륭하네! 그대의 실력이 일취월장하는구먼.'", 
+                "허준: '이 정도는 탕약 달이는 것보다 쉽지 않은가?'",
+                "허준: '병세가 심각하군... 아니, 타자 속도가 말일세!'", 
+                "허준: '조금만 더 힘내시게! 백성들이 자네를 기다리고 있네.'",
+                "허준: '이보게 젊은이, 그대의 손놀림이 예사롭지 않구먼!'",
+                "허준: '약재를 다루는 솜씨가 마치 내 젊은 시절을 보는 듯하네!'"
+            ]
+        };
+
+        let score = 0;
+        let hearts = 5;
+        const maxHearts = 5;
+        let activeWords = [];
+        let gameInterval;
+        let wordCreationInterval;
+        let gameSpeed = 2000;
+        let fallSpeedMultiplier = 1;
+        let heojunCooldown = false;
+        let quizActive = false;
+        let currentQuiz = null; 
+        let nextDifficultyScoreThreshold = 50; 
+        let isQuizApiHealthy = false; 
+        let initialQuizCheckDone = false;
+
+        const API_KEY = ""; 
+        const GENERATE_QUIZ_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+
+        const matchEffects = ['fade-out-effect', 'split-effect', 'explode-effect'];
+
+
+        async function generateHerbQuizFromAPI(herbName, isTestCall = false) {
+            const prompt = `한약재 '${herbName}'의 효능에 대한 O/X 퀴즈를 만들어주세요. 질문은 30자 이내로 간결하게 해주세요. 정답이 O 또는 X가 되도록 해주세요. JSON 형식으로 답변해주세요. 형식: { "quiz": "퀴즈 내용", "answer": "O" }`;
+            
+            if (!isTestCall && quizLoading) {
+                 quizLoading.classList.remove('hidden');
+                 quizLoading.style.display = 'block'; 
+            }
+            if (!isTestCall && quizOptions) quizOptions.classList.add('hidden');
+            if (!isTestCall && quizSection) quizSection.classList.add('hidden'); 
+
+            console.log(`generateHerbQuizFromAPI: Called for '${herbName}'. isTestCall: ${isTestCall}`);
+
+            try {
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: { "quiz": { "type": "STRING" }, "answer": { "type": "STRING", "enum": ["O", "X"] } },
+                            required: ["quiz", "answer"]
+                        }
+                    }
+                };
+                const response = await fetch(GENERATE_QUIZ_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    console.error('Gemini API Quiz Error:', response.status, errorBody);
+                    if (!isTestCall) resetFromQuizState("퀴즈 API 호출에 실패했어요.");
+                    return null;
+                }
+                const result = await response.json();
+                if (result.candidates && result.candidates[0]?.content?.parts[0]?.text) {
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    console.log("generateHerbQuizFromAPI: API Response JSON Text:", jsonText);
+                    const parsedData = JSON.parse(jsonText);
+                    if (parsedData && parsedData.quiz && parsedData.answer) {
+                        console.log("generateHerbQuizFromAPI: Parsed quiz data:", parsedData);
+                        return parsedData; 
+                    } else {
+                         console.error('Gemini API Quiz Error: Parsed data is invalid.', parsedData);
+                         if (!isTestCall) resetFromQuizState("퀴즈 데이터 형식이 올바르지 않아요.");
+                         return null;
+                    }
+                }
+                console.error('Gemini API Quiz Error: Unexpected response structure', result);
+                if (!isTestCall) resetFromQuizState("퀴즈 API 응답 구조가 이상해요.");
+                return null;
+            } catch (error) {
+                console.error('Error calling/parsing Gemini API for quiz:', error);
+                if (!isTestCall) resetFromQuizState("퀴즈 생성 중 오류가 발생했어요.");
+                return null;
+            } finally {
+                if (!isTestCall && quizLoading) {
+                    quizLoading.classList.add('hidden');
+                    quizLoading.style.display = 'none'; 
+                }
+            }
+        }
+
+        async function checkQuizApiHealth() {
+            console.log("checkQuizApiHealth: Starting API health check...");
+            initialQuizCheckDone = false;
+            isQuizApiHealthy = false; 
+            try {
+                const testQuiz = await generateHerbQuizFromAPI("감초", true); 
+                if (testQuiz && testQuiz.quiz && testQuiz.answer) {
+                    isQuizApiHealthy = true;
+                    console.log("checkQuizApiHealth: API is healthy.");
+                } else {
+                    console.warn("checkQuizApiHealth: API health check failed (no valid quiz data).");
+                }
+            } catch (error) {
+                console.error("checkQuizApiHealth: Error during API health check:", error);
+            } finally {
+                initialQuizCheckDone = true;
+                console.log("checkQuizApiHealth: API health check finished. Healthy:", isQuizApiHealthy);
+            }
+        }
+      
+        function initGame() {
+            console.log("initGame: Called.");
+            score = 0;
+            hearts = maxHearts;
+            activeWords = [];
+            gameSpeed = 2000;
+            fallSpeedMultiplier = 1;
+            heojunCooldown = false;
+            quizActive = false;
+            currentQuiz = null;
+            nextDifficultyScoreThreshold = 50; 
+            
+            checkQuizApiHealth(); 
+
+            updateScoreDisplay();
+            updateHeartsDisplay();
+            if(wordInput) {
+                wordInput.value = '';
+                wordInput.disabled = false;
+            }
+            
+            if(mainMessageTextEl) mainMessageTextEl.textContent = '게임 시작! 떨어지는 한약 이름을 입력하세요!';
+            if(mainMessageTextEl) mainMessageTextEl.style.display = 'inline'; 
+
+            const heojunImgInMessage = messageArea?.querySelector('.heojun-img');
+            if (heojunImgInMessage) heojunImgInMessage.remove(); 
+            const heojunTextEl = messageArea?.querySelector('p#heojunMessageText');
+             if (heojunTextEl) heojunTextEl.remove(); 
+            
+            if(quizSection) {
+                quizSection.classList.add('hidden');
+                quizSection.style.display = 'none'; 
+            }
+            if(quizLoading) {
+                quizLoading.classList.add('hidden');
+                quizLoading.style.display = 'none';
+            }
+            
+            if(wordArea) {
+                while (wordArea.firstChild) {
+                    wordArea.removeChild(wordArea.firstChild);
+                }
+            }
+
+            if(startScreen) startScreen.classList.add('hidden');
+            if(gameOverScreen) gameOverScreen.classList.add('hidden');
+            if(gameContainer) gameContainer.classList.remove('hidden'); 
+            console.log("initGame: gameContainer unhidden. Visible:", !gameContainer?.classList.contains('hidden'));
+
+            startGameLoops();
+            if(wordInput) wordInput.focus(); 
+            console.log("initGame: wordInput focused.");
+        }
+
+        function startGameLoops() {
+            console.log("startGameLoops: Called.");
+            if (gameInterval) clearInterval(gameInterval);
+            if (wordCreationInterval) clearInterval(wordCreationInterval);
+
+            gameInterval = setInterval(gameLoop, 50);
+            wordCreationInterval = setInterval(createWord, gameSpeed);
+        }
+
+        function stopGameLoops() {
+            console.log("stopGameLoops: Called.");
+            clearInterval(gameInterval);
+            clearInterval(wordCreationInterval);
+            gameInterval = null; 
+            wordCreationInterval = null;
+        }
+
+        function updateScoreDisplay() {
+            if(scoreDisplay) scoreDisplay.textContent = score;
+        }
+
+        function updateHeartsDisplay() {
+            if (!heartsContainer) return;
+            heartsContainer.innerHTML = '';
+            for (let i = 0; i < hearts; i++) heartsContainer.innerHTML += '<span>❤️</span>';
+            for (let i = hearts; i < maxHearts; i++) heartsContainer.innerHTML += '<span>🤍</span>';
+        }
+
+        function createWord() {
+            if (document.hidden || quizActive || !wordArea) return;
+
+            const randomWordText = herbWords[Math.floor(Math.random() * herbWords.length)];
+            const wordElement = document.createElement('div');
+            wordElement.classList.add('word');
+            wordElement.textContent = randomWordText;
+            
+            const wordAreaWidth = wordArea.offsetWidth;
+            if (wordAreaWidth <= 0) return; 
+
+            const tempWordWidthEstimate = randomWordText.length * 16; 
+            let randomX = Math.random() * (wordAreaWidth - tempWordWidthEstimate);
+            if (randomX < 0) randomX = 0;
+            if (randomX + tempWordWidthEstimate > wordAreaWidth) randomX = Math.max(0, wordAreaWidth - tempWordWidthEstimate);
+
+            wordElement.style.left = `${randomX}px`;
+            wordElement.style.top = `0px`;
+
+            const wordObj = {
+                element: wordElement,
+                text: randomWordText,
+                y: 0,
+                speed: (Math.random() * 0.5 + 0.5) * fallSpeedMultiplier
+            };
+            activeWords.push(wordObj);
+            wordArea.appendChild(wordElement);
+        }
+
+        function gameLoop() {
+            if (document.hidden || quizActive) return;
+
+            for (let i = activeWords.length - 1; i >= 0; i--) {
+                const wordObj = activeWords[i];
+                if (!wordObj || !wordObj.element) continue; 
+
+                wordObj.y += wordObj.speed;
+                wordObj.element.style.top = `${wordObj.y}px`;
+
+                if (wordArea && wordObj.y + wordObj.element.offsetHeight > wordArea.offsetHeight) {
+                    if (wordArea.contains(wordObj.element)) {
+                        wordArea.removeChild(wordObj.element);
+                    }
+                    activeWords.splice(i, 1); 
+                    hearts--;
+                    updateHeartsDisplay();
+                    showRandomComicScenario(false, `이런! 약재('${wordObj.text}')를 놓쳤습니다!`);
+                    if (hearts <= 0) {
+                        gameOver();
+                        return; 
+                    }
+                }
+            }
+
+            if (score >= nextDifficultyScoreThreshold && gameSpeed > 500) {
+                gameSpeed -= 100; 
+                if (gameSpeed < 500) gameSpeed = 500; 
+                fallSpeedMultiplier += 0.05; 
+                
+                clearInterval(wordCreationInterval);
+                wordCreationInterval = setInterval(createWord, gameSpeed);
+                
+                if (!quizActive && mainMessageTextEl) mainMessageTextEl.textContent = "점점 빨라집니다! 집중하세요!";
+                
+                nextDifficultyScoreThreshold += 50; 
+                console.log(`Difficulty increased. Next: ${nextDifficultyScoreThreshold}, Speed: ${gameSpeed}`);
+            }
+            
+            if (!heojunCooldown && Math.random() < 0.002) { 
+                spawnHeoJun();
+            }
+        }
+
+        function processWordSubmission(typedText) {
+            if (!typedText || quizActive) return; 
+
+            for (let i = activeWords.length - 1; i >= 0; i--) {
+                const wordObj = activeWords[i];
+                if (wordObj.text === typedText) {
+                    const matchedHerb = wordObj.text; 
+                    score += 10;
+                    updateScoreDisplay();
+
+                    const randomEffect = matchEffects[Math.floor(Math.random() * matchEffects.length)];
+                    wordObj.element.className = 'word'; 
+                    void wordObj.element.offsetWidth; 
+                    wordObj.element.classList.add(randomEffect); 
+                    console.log("Applied effect:", randomEffect, "to word:", wordObj.text);
+
+                    const elementToRemove = wordObj.element;
+                    const animationDuration = (randomEffect === 'split-effect') ? 600 : 500; 
+                    setTimeout(() => {
+                        if (wordArea && wordArea.contains(elementToRemove)) {
+                           wordArea.removeChild(elementToRemove);
+                        }
+                    }, animationDuration);
+
+                    activeWords.splice(i, 1);
+
+                    if (Math.random() < 0.15 && !quizActive) { 
+                        if (initialQuizCheckDone) {
+                            if (isQuizApiHealthy) {
+                                triggerHerbQuiz(matchedHerb);
+                            } else {
+                                showTemporaryMessage("퀴즈 서버에 연결할 수 없어요. 다음에 다시 시도할게요!");
+                            }
+                        } else {
+                            showTemporaryMessage("퀴즈 서버 점검 중... 잠시만요!");
+                        }
+                        return; 
+                    }
+
+                    if (Math.random() < 0.3) {
+                        showRandomComicScenario(false, `'${typedText}' 입력 성공!`);
+                    } else {
+                        if (!quizActive && mainMessageTextEl) mainMessageTextEl.textContent = `'${typedText}' 입력 성공! (+10점)`;
+                    }
+
+                    if (Math.random() < 0.1 && !heojunCooldown && !quizActive) {
+                         const randomEncouragement = heojunMessages.encouragement[Math.floor(Math.random() * heojunMessages.encouragement.length)];
+                         if (!quizActive && mainMessageTextEl) mainMessageTextEl.textContent = randomEncouragement;
+                    }
+                    return; 
+                }
+            }
+        }
+        
+        function showTemporaryMessage(msg, duration = 2000) {
+            if (quizActive || !mainMessageTextEl) return;
+            
+            mainMessageTextEl.textContent = msg;
+            mainMessageTextEl.style.display = 'inline';
+            if(quizSection) quizSection.style.display = 'none'; 
+            if(quizLoading) quizLoading.style.display = 'none'; 
+            
+            setTimeout(() => {
+                if (mainMessageTextEl.textContent === msg && !quizActive) { 
+                     showRandomComicScenario(true); 
+                }
+            }, duration);
+        }
+
+
+        if (wordInput) {
+            wordInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault(); 
+                    if (quizActive) return; 
+
+                    const typedText = wordInput.value.trim();
+                    processWordSubmission(typedText); 
+                    wordInput.value = ''; 
+                }
+            });
+        }
+
+        function resetFromQuizState(failureMessage) {
+            console.log("--- resetFromQuizState: START --- Reason:", failureMessage);
+            quizActive = false; 
+            console.log("resetFromQuizState: quizActive set to false.");
+            currentQuiz = null;
+
+            if(wordInput) {
+                wordInput.disabled = false;
+                console.log("resetFromQuizState: wordInput enabled.");
+            } 
+
+            if(quizSection) {
+                quizSection.classList.add('hidden');
+                quizSection.style.display = 'none'; 
+                quizSection.style.border = ''; 
+                console.log("resetFromQuizState: quizSection display (computed):", window.getComputedStyle(quizSection).display);
+            } 
+            if(quizLoading) {
+                 quizLoading.classList.add('hidden');
+                 quizLoading.style.display = 'none';
+            }
+            if(quizOptions) quizOptions.style.border = ''; 
+            if(quizText) quizText.style.border = ''; 
+
+            requestAnimationFrame(() => { 
+                console.log("resetFromQuizState: rAF callback triggered.");
+                if (hearts > 0 && mainMessageTextEl) { 
+                    showRandomComicScenario(true, failureMessage || "퀴즈에 문제가 있어 게임으로 돌아갑니다.");
+                } else if (mainMessageTextEl) {
+                    mainMessageTextEl.textContent = failureMessage || "게임 상태 복구 중...";
+                    mainMessageTextEl.style.display = 'inline';
+                }
+
+                if (wordInput && !wordInput.disabled && gameContainer && !gameContainer.classList.contains('hidden') && hearts > 0) {
+                     try {
+                        wordInput.focus();
+                        console.log("resetFromQuizState: wordInput focused.");
+                     } catch(e) {
+                        console.warn("Focus failed in resetFromQuizState", e);
+                     }
+                }
+                console.log("--- resetFromQuizState: END ---");
+            }); 
+        }
+
+        async function triggerHerbQuiz(herbName) { 
+            console.log("--- triggerHerbQuiz: START for", herbName, "---");
+            if(!mainMessageTextEl || !quizSection || !quizText || !quizOptions || !wordInput || !quizLoading) {
+                console.error("triggerHerbQuiz: Critical UI element missing. Aborting quiz.");
+                resetFromQuizState("퀴즈 UI 구성 요소가 없습니다.");
+                return;
+            }
+            
+            quizActive = true; 
+            wordInput.disabled = true;
+            mainMessageTextEl.style.display = 'none'; 
+            
+            quizSection.classList.add('hidden'); 
+            quizSection.style.display = 'none';
+            quizOptions.classList.add('hidden');
+            quizOptions.style.display = 'none';
+
+            quizLoading.classList.remove('hidden');
+            quizLoading.style.display = 'block'; 
+            console.log("triggerHerbQuiz: UI prepared for loading. quizLoading display:", window.getComputedStyle(quizLoading).display);
+            
+            try {
+                const quizData = await generateHerbQuizFromAPI(herbName); 
+                
+                if (quizActive && quizData && quizData.quiz && quizData.answer) { 
+                    console.log("triggerHerbQuiz: Received valid quiz data:", quizData);
+                    currentQuiz = { herb: herbName, question: quizData.quiz, answer: quizData.answer };
+
+                    quizText.innerHTML = `✨ 깜짝 퀴즈! ✨<br>${currentQuiz.question} (O/X)`; 
+                    console.log("triggerHerbQuiz: quizText content set.");
+                    
+                    quizLoading.classList.add('hidden');
+                    quizLoading.style.display = 'none';
+
+                    quizSection.classList.remove('hidden');
+                    quizOptions.classList.remove('hidden');
+
+                    // 스타일을 즉시 적용하고, 다음 틱에서 로그 확인
+                    quizSection.style.display = 'flex'; 
+                    quizSection.style.flexDirection = 'column';
+                    quizSection.style.alignItems = 'center';
+                    quizSection.style.width = '100%'; 
+                    quizSection.style.minHeight = '80px'; // 최소 높이 설정
+                    quizSection.style.padding = '1px'; // 브라우저가 높이를 계산하도록 약간의 패딩 (디버깅용)
+                    // quizSection.style.border = '2px dashed hotpink'; // 디버깅용 테두리 (선택적)
+
+                    quizOptions.style.display = 'flex';
+                    quizOptions.style.justifyContent = 'center'; 
+                    // quizOptions.style.border = '1px solid cyan'; // 디버깅용 테두리 (선택적)
+                    
+                    // quizText.style.border = '1px solid orange'; // 디버깅용 테두리 (선택적)
+
+                    setTimeout(() => { 
+                        if (!quizActive) {
+                            console.log("triggerHerbQuiz (timeout log): Quiz was reset before logging final UI state.");
+                            return; 
+                        }
+                        const reflow = quizSection.offsetHeight; // 강제 리플로우
+                        console.log("triggerHerbQuiz (after timeout and reflow):");
+                        console.log("  messageArea display:", window.getComputedStyle(messageArea).display, "offsetHeight:", messageArea.offsetHeight);
+                        console.log("  quizSection display:", window.getComputedStyle(quizSection).display, "offsetHeight:", quizSection.offsetHeight, "classList:", quizSection.classList.toString());
+                        console.log("  quizText    display:", window.getComputedStyle(quizText).display, "offsetHeight:", quizText.offsetHeight, "textContent:", quizText.textContent.substring(0,30) + "...");
+                        console.log("  quizOptions display:", window.getComputedStyle(quizOptions).display, "offsetHeight:", quizOptions.offsetHeight, "classList:", quizOptions.classList.toString());
+                        
+                        if(quizSection.offsetHeight === 0 && quizText.offsetHeight > 0) { 
+                            console.error("ERROR: quizSection still has 0 height despite content! Parent (messageArea) might be the issue.");
+                        } else if (quizSection.offsetHeight > 0) {
+                            console.log("SUCCESS: quizSection HAS HEIGHT! UI should be visible.");
+                        }
+                         // 디버깅 후 패딩 제거 (실제로는 필요 없을 수 있음)
+                        // quizSection.style.padding = ''; 
+                        // quizSection.style.border = ''; 
+                        // quizOptions.style.border = '';
+                        // quizText.style.border = '';
+                    }, 0); 
+
+                } else if (quizActive) { 
+                    console.log("triggerHerbQuiz: API call did not return valid quiz data OR quiz was reset. Resetting state.");
+                    resetFromQuizState("퀴즈를 가져오는 데 실패했어요."); 
+                }
+            } catch (error) {
+                console.error("Error during triggerHerbQuiz's API call or processing:", error);
+                if (quizActive) { 
+                    resetFromQuizState("퀴즈 생성 중 오류가 발생했습니다.");
+                }
+            }
+            console.log("--- triggerHerbQuiz: END ---");
+        }
+
+        function handleQuizAnswer(userAnswer) {
+            console.log("--- handleQuizAnswer: START --- User answer:", userAnswer);
+            if (!currentQuiz || typeof currentQuiz.answer === 'undefined') { 
+                 console.error("handleQuizAnswer: currentQuiz is invalid or answer is undefined.");
+                 resetFromQuizState("퀴즈 정보가 부족하여 진행할 수 없습니다.");
+                 return;
+            }
+            console.log("handleQuizAnswer: Correct answer was:", currentQuiz.answer);
+
+            let resultMessage = "";
+            if (userAnswer === currentQuiz.answer) {
+                score += 20; 
+                updateScoreDisplay();
+                resultMessage = `정답입니다! (+20점) ✨`;
+                console.log("handleQuizAnswer: Correct!");
+            } else {
+                hearts--; 
+                updateHeartsDisplay();
+                resultMessage = `아쉽지만 틀렸어요. 정답은 '${currentQuiz.answer}'였습니다. (하트 -1 ❤️)`;
+                console.log("handleQuizAnswer: Incorrect.");
+                if (hearts <= 0) {
+                    gameOver(); 
+                    return; 
+                }
+            }
+            
+            if(quizSection) {
+                quizSection.classList.add('hidden'); 
+                quizSection.style.display = 'none'; 
+                quizSection.style.border = ''; 
+                quizSection.style.padding = ''; // 추가된 패딩 제거
+                console.log("handleQuizAnswer: quizSection hidden.");
+            } 
+            if(quizOptions) quizOptions.style.border = '';
+            if(quizText) quizText.style.border = '';
+            if(quizLoading) quizLoading.classList.add('hidden'); 
+
+            if(mainMessageTextEl) { 
+                mainMessageTextEl.textContent = resultMessage; 
+                mainMessageTextEl.style.display = 'inline'; 
+                console.log("handleQuizAnswer: Result message set to mainMessageTextEl:", resultMessage);
+            }
+            
+            quizActive = false; 
+            console.log("handleQuizAnswer: quizActive set to false.");
+            currentQuiz = null;
+            if(wordInput) {
+                wordInput.disabled = false;
+                console.log("handleQuizAnswer: wordInput enabled.");
+            }
+
+            setTimeout(() => {
+                console.log("handleQuizAnswer: setTimeout callback triggered.");
+                if (!quizActive && hearts > 0 && mainMessageTextEl) {
+                    showRandomComicScenario(true); 
+                }
+                 if (wordInput && !wordInput.disabled && gameContainer && !gameContainer.classList.contains('hidden') && hearts > 0) {
+                     try {
+                        wordInput.focus();
+                        console.log("handleQuizAnswer: wordInput focused in timeout.");
+                     } catch(e) {
+                        console.warn("Focus failed in handleQuizAnswer timeout", e);
+                     }
+                }
+                console.log("--- handleQuizAnswer: END ---");
+            }, 3000); 
+        }
+
+        if(quizBtnO) quizBtnO.addEventListener('click', () => handleQuizAnswer("O"));
+        if(quizBtnX) quizBtnX.addEventListener('click', () => handleQuizAnswer("X"));
+
+        function spawnHeoJun() { 
+            if (quizActive || !messageArea) return; 
+            heojunCooldown = true;
+            
+            if(mainMessageTextEl) mainMessageTextEl.style.display = 'none';
+            if(quizSection) {
+                quizSection.classList.add('hidden');
+                quizSection.style.display = 'none';
+            }
+            if(quizLoading) quizLoading.classList.add('hidden');
+
+
+            messageArea.innerHTML = ''; 
+            const heojunIcon = document.createElement('img');
+            heojunIcon.src = 'https://placehold.co/60x60/A52A2A/FFFFFF?text=허준&font=NanumGothic';
+            heojunIcon.alt = '허준 선생님';
+            heojunIcon.classList.add('heojun-img', 'mx-auto');
+            heojunIcon.onerror = function() { this.src='https://placehold.co/60x60/A52A2A/FFFFFF?text=허준&font=NanumGothic'; };
+            messageArea.appendChild(heojunIcon);
+
+            const heojunTextElement = document.createElement('p');
+            heojunTextElement.id = 'heojunMessageText'; 
+            const randomEncouragement = heojunMessages.encouragement[Math.floor(Math.random() * heojunMessages.encouragement.length)];
+            
+            if (hearts < maxHearts) {
+                hearts++;
+                updateHeartsDisplay();
+                heojunTextElement.textContent = `${heojunMessages.itemPrefix} ${randomEncouragement} ${heojunMessages.itemSuffix}`;
+            } else {
+                heojunTextElement.textContent = `${heojunMessages.itemPrefix} ${randomEncouragement} (이미 체력이 넘치는구먼!)`;
+            }
+            messageArea.appendChild(heojunTextElement);
+            
+            setTimeout(() => {
+                heojunCooldown = false;
+                if(messageArea.contains(heojunIcon) && !quizActive && hearts > 0) {
+                     messageArea.innerHTML = ''; 
+                     if(mainMessageTextEl) mainMessageTextEl.style.display = 'inline'; 
+                    showRandomComicScenario(true);
+                }
+            }, 30000); 
+
+            setTimeout(() => { 
+                if(messageArea.contains(heojunIcon) && !quizActive && hearts > 0 && heojunCooldown) { 
+                     messageArea.innerHTML = ''; 
+                     if(mainMessageTextEl) mainMessageTextEl.style.display = 'inline';
+                     showRandomComicScenario(true);
+                }
+            }, 5000);
+        }
+
+        function showRandomComicScenario(isGeneral = false, prefixMessage = "") {
+            if (quizActive || !mainMessageTextEl) return; 
+            
+            const heojunImgInMessage = messageArea?.querySelector('.heojun-img');
+            if (heojunImgInMessage) heojunImgInMessage.remove();
+            const heojunTextInMessage = messageArea?.querySelector('p#heojunMessageText');
+             if (heojunTextInMessage) heojunTextInMessage.remove();
+
+            let scenario = "";
+            if (isGeneral || Math.random() < 0.25) {
+                scenario = comicScenarios[Math.floor(Math.random() * comicScenarios.length)];
+            }
+            
+            let fullMessage = prefixMessage ? `${prefixMessage} ${scenario}` : scenario;
+            if (!fullMessage && isGeneral) { 
+                 fullMessage = "계속해서 집중하세요!";
+            }
+
+            mainMessageTextEl.textContent = fullMessage; 
+            mainMessageTextEl.style.display = 'inline'; 
+            if(quizSection) quizSection.style.display = 'none'; 
+            if(quizLoading) quizLoading.style.display = 'none'; 
+
+
+            if (scenario.includes("홍삼 스틸 성공")) {
+                score += 10;
+                updateScoreDisplay();
+                mainMessageTextEl.textContent += " (특별 보너스 +10점!)";
+            }
+        }
+
+        function gameOver() {
+            console.log("gameOver: Called.");
+            stopGameLoops();
+            if(wordInput) wordInput.disabled = true;
+            quizActive = false; 
+            if(quizSection) {
+                quizSection.classList.add('hidden');
+                quizSection.style.display = 'none';
+            }
+            if(quizLoading) {
+                quizLoading.classList.add('hidden');
+                quizLoading.style.display = 'none';
+            }
+
+
+            if(finalScoreDisplay) finalScoreDisplay.textContent = score;
+            let msg = "아쉽지만, 모든 약재를 지키지 못했네요.";
+            if (score > 200) msg = "대단합니다! 명의의 자질이 보이는군요!";
+            else if (score > 100) msg = "훌륭합니다! 다음엔 더 높은 점수를 향해!";
+            else if (score > 50) msg = "잘하셨어요! 조금만 더 연습하면 명의가 될 수 있어요!";
+            if(gameOverMessage) gameOverMessage.textContent = msg;
+            if(gameOverScreen) gameOverScreen.classList.remove('hidden');
+        }
+
+        if(startButton) {
+            startButton.addEventListener('click', () => {
+                console.log("startButton: Clicked.");
+                initGame();
+            });
+        }
+        if(restartButton) { 
+            restartButton.addEventListener('click', () => {
+                 console.log("gameOverScreen restartButton: Clicked.");
+                 if(gameOverScreen) gameOverScreen.classList.add('hidden');
+                 if(startScreen) startScreen.classList.remove('hidden'); 
+            });
+        }
+        if(ingameRestartButton) { 
+            ingameRestartButton.addEventListener('click', () => {
+                console.log("ingameRestartButton: Clicked.");
+                stopGameLoops(); 
+                initGame(); 
+            });
+        }
+        
+        window.addEventListener('resize', () => { /* 현재 특별한 처리 없음 */ });
+
+        function showInitialScreen() {
+            console.log("showInitialScreen: Called.");
+            updateHeartsDisplay(); 
+            
+            if(startScreen) startScreen.classList.remove('hidden');
+            if(gameOverScreen) gameOverScreen.classList.add('hidden');
+            if(gameContainer) gameContainer.classList.add('hidden');
+            
+            console.log("showInitialScreen: startScreen visible:", startScreen ? !startScreen.classList.contains('hidden') : "not found");
+        }
+        
+        window.onload = () => {
+            console.log("window.onload: Event triggered.");
+            showInitialScreen();
+        };
+    </script></body></html>
