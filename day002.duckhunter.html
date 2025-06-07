@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-P8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오리 잡기 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: manipulation; }
+        #gameBoard {
+            position: relative; overflow: hidden; background-color: #87CEEB;
+            border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background 0.5s ease;
+        }
+        .gameObject {
+            position: absolute; border-radius: 50%; cursor: pointer;
+            transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+            user-select: none;
+        }
+        .duck { background-color: #FFEB3B; border: 2px solid #FBC02D; }
+        .duck-eye-left, .duck-eye-right {
+            width: 18%; height: 18%; background-color: black; border-radius: 50%;
+            position: absolute; top: 35%;
+        }
+        .duck-eye-left { left: 25%; }
+        .duck-eye-right { left: 60%; }
+        .duck-mouth {
+            width: 40%; height: 15%; background-color: #FFA500; border: 1px solid #E69500;
+            border-radius: 30% 30% 50% 50% / 0% 0% 100% 100%;
+            position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
+        }
+        .bomb { background-color: #2c2c2c; border: 2px solid #111; }
+        .bomb-fuse {
+            position: absolute; width: 10%; height: 25%; background-color: #A0522D;
+            top: -15%; left: 45%; border-radius: 5px 5px 0 0;
+        }
+        .star {
+            background-color: #FFD700; border-radius: 50%; font-size: 24px;
+            color: #FFC700; text-shadow: 0 0 5px gold; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .gameObject.clicked { transform: scale(2.2); opacity: 0; }
+        .particle {
+            position: absolute; border-radius: 50%; pointer-events: none;
+            transition: transform 0.6s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.6s linear;
+        }
+        #rainbow-bg {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to top, red, orange, yellow, green, blue, indigo, violet);
+            opacity: 0; transition: opacity 0.5s ease-in-out; pointer-events: none;
+        }
+        #gameOverScreen { background-color: rgba(0, 0, 0, 0.75); }
+        button { padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; transition: background-color 0.2s; }
+        #heartsContainer { font-size: 2.5rem; color: #ff4757; letter-spacing: 0.2em; }
+        #rainbowTimer { font-weight: bold; color: #1e3a8a; }
+        /* 난이도 선택 버튼 스타일 */
+        .difficulty-btn.selected {
+            background-color: #3b82f6; /* Blue-600 */
+            color: white;
+            box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.06);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl font-bold text-yellow-500 mb-2">오리 잡기!</h1>
+    <div class="mb-4 flex items-center space-x-6">
+        <div id="heartsContainer">❤️❤️❤️</div>
+        <div class="text-xl">점수: <span id="score" class="font-semibold">0</span></div>
+        <div id="rainbowTimer" class="text-lg"></div>
+    </div>
+
+    <div id="gameBoard" class="w-full max-w-2xl h-[400px] sm:h-[500px] md:h-[600px]">
+        <div id="rainbow-bg"></div>
+    </div>
+
+    <div class="mt-4 flex flex-col items-center space-y-4">
+        <div id="difficultySelector" class="flex space-x-2">
+            <button data-difficulty="Easy" class="difficulty-btn bg-gray-200 hover:bg-gray-300">Easy</button>
+            <button data-difficulty="Normal" class="difficulty-btn bg-gray-200 hover:bg-gray-300 selected">Normal</button>
+            <button data-difficulty="Hard" class="difficulty-btn bg-gray-200 hover:bg-gray-300">Hard</button>
+        </div>
+        <button id="startButton" class="bg-green-500 hover:bg-green-600 text-white">게임 시작</button>
+    </div>
+
+    <div id="gameOverScreen" class="fixed inset-0 flex-col items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+            <h2 class="text-3xl font-bold mb-4">게임 종료!</h2>
+            <p id="gameOverReason" class="text-md mb-4 font-semibold"></p>
+            <p class="text-xl mb-4">최종 점수: <span id="finalScore" class="font-semibold">0</span></p>
+            <button id="restartButton" class="bg-blue-500 hover:bg-blue-600 text-white">다시 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const gameBoard = document.getElementById('gameBoard');
+        const scoreDisplay = document.getElementById('score');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const gameOverReasonDisplay = document.getElementById('gameOverReason');
+        const heartsContainer = document.getElementById('heartsContainer');
+        const rainbowBg = document.getElementById('rainbow-bg');
+        const rainbowTimerDisplay = document.getElementById('rainbowTimer');
+        const difficultySelector = document.getElementById('difficultySelector');
+        const difficultyButtons = difficultySelector.querySelectorAll('.difficulty-btn');
+
+        let gameObjects = {};
+        let score = 0;
+        let hearts = 3;
+        let gameIsOver = true;
+        let spawnTimeoutId;
+        
+        // --- 난이도 관련 변수 ---
+        const DUCK_LIFETIMES = { Easy: 5000, Normal: 3000, Hard: 1000 };
+        let currentDuckLifetime = DUCK_LIFETIMES.Normal;
+
+        let currentSpawnInterval = 1500;
+        const minSpawnInterval = 300;
+        const spawnIntervalDecrement = 50;
+        
+        let isRainbowMode = false;
+        let rainbowModeTimeoutId;
+        let rainbowColors = ['#FF0000', '#FFA500', '#FFFF00', '#008000', '#0000FF', '#4B0082', '#EE82EE'];
+        let rainbowColorIndex = 0;
+        let collectedRainbowColors = new Set();
+
+        let quackSound, explosionSound, starSound, bonusSound;
+
+        async function initializeAudio() {
+            if (quackSound || typeof Tone === 'undefined') return;
+            try {
+                await Tone.start();
+                quackSound = new Tone.MonoSynth({ oscillator: { type: "sawtooth" }, filter: { type: "lowpass", Q: 2 }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.2 }, filterEnvelope: { attack: 0.02, decay: 0.1, sustain: 0, baseFrequency: 400, octaves: 3 } }).toDestination();
+                explosionSound = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0.01, release: 0.1 } }).toDestination();
+                starSound = new Tone.PluckSynth({ attackNoise: 1, dampening: 4000, resonance: 0.7 }).toDestination();
+                bonusSound = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "triangle" } }).toDestination();
+                console.log("Audio initialized.");
+            } catch (e) { console.error("Audio init failed", e); }
+        }
+
+        function createGameObject(type) {
+            const element = document.createElement('div');
+            element.classList.add('gameObject');
+            const id = type + '_' + Date.now() + '_' + Math.random();
+            element.id = id;
+            
+            let lifetime;
+            const minSize = Math.max(25, gameBoard.clientWidth / 20);
+            const maxSize = Math.max(60, gameBoard.clientWidth / 10);
+            const size = Math.random() * (maxSize - minSize) + minSize;
+            const maxX = gameBoard.clientWidth - size;
+            const maxY = gameBoard.clientHeight - size;
+            if (maxX <=0 || maxY <=0) return;
+
+            element.style.width = `${size}px`;
+            element.style.height = `${size}px`;
+            element.style.left = `${Math.random() * maxX}px`;
+            element.style.top = `${Math.random() * maxY}px`;
+            
+            const objectData = { id, element, type, size };
+
+            switch(type) {
+                case 'duck':
+                    element.classList.add('duck');
+                    ['duck-eye-left', 'duck-eye-right', 'duck-mouth'].forEach(cls => {
+                        const feature = document.createElement('div');
+                        feature.classList.add(cls);
+                        element.appendChild(feature);
+                    });
+                    
+                    if (isRainbowMode) {
+                        objectData.color = rainbowColors[rainbowColorIndex];
+                        element.style.backgroundColor = objectData.color;
+                        rainbowColorIndex = (rainbowColorIndex + 1) % rainbowColors.length;
+                    }
+                    
+                    element.addEventListener('click', () => handleDuckClick(id));
+                    // 난이도에 따른 오리 생명 시간 적용
+                    lifetime = currentDuckLifetime;
+                    objectData.timeoutId = setTimeout(() => handleMiss(id), lifetime);
+                    break;
+
+                case 'bomb':
+                    element.classList.add('bomb');
+                    const fuse = document.createElement('div');
+                    fuse.classList.add('bomb-fuse');
+                    element.appendChild(fuse);
+                    element.addEventListener('click', () => handleBombClick(id));
+                    lifetime = 3000; // 폭탄은 3초 고정
+                    objectData.timeoutId = setTimeout(() => removeObject(id), lifetime);
+                    break;
+                
+                case 'star':
+                    element.classList.add('star');
+                    element.innerHTML = '★';
+                    element.addEventListener('click', () => handleStarClick(id));
+                    lifetime = 5000;
+                    objectData.timeoutId = setTimeout(() => removeObject(id), lifetime);
+                    break;
+            }
+            
+            gameObjects[id] = objectData;
+            gameBoard.appendChild(element);
+        }
+
+        function handleMiss(id) {
+            if (!gameObjects[id] || gameObjects[id].type !== 'duck') return;
+            removeObject(id);
+            if (!gameIsOver) {
+                hearts--;
+                updateHearts();
+                if (hearts <= 0) {
+                    triggerGameOver("하트를 모두 소진했습니다.");
+                }
+            }
+        }
+
+        function removeObject(id) {
+            const obj = gameObjects[id];
+            if (!obj) return;
+            clearTimeout(obj.timeoutId);
+            obj.element.remove();
+            delete gameObjects[id];
+        }
+
+        function handleDuckClick(id) {
+            if (gameIsOver) return;
+            const obj = gameObjects[id];
+            if (!obj) return;
+
+            const points = isRainbowMode ? 2 : 1;
+            score += points;
+            
+            if (isRainbowMode) {
+                collectedRainbowColors.add(obj.color);
+                if (collectedRainbowColors.size === rainbowColors.length) {
+                    score += 10;
+                    if(bonusSound) bonusSound.triggerAttackRelease(["C4", "E4", "G4"], "8n");
+                    showRainbowBonus();
+                    collectedRainbowColors.clear();
+                }
+            }
+            scoreDisplay.textContent = score;
+            if(quackSound) quackSound.triggerAttackRelease("G4", "16n");
+            
+            obj.element.classList.add('clicked');
+            createParticleEffect(obj.element.offsetLeft, obj.element.offsetTop, obj.size, ['#FFEB3B', '#FFA500']);
+            removeObject(id);
+        }
+
+        function handleBombClick(id) {
+            if (gameIsOver) return;
+            const obj = gameObjects[id];
+            if(!obj) return;
+            if(explosionSound) explosionSound.triggerAttackRelease("0.2n");
+            obj.element.classList.add('clicked');
+            createParticleEffect(obj.element.offsetLeft, obj.element.offsetTop, obj.size, ['#ff4500', '#4f4f4f', '#ffc107']);
+            removeObject(id);
+            triggerGameOver("펑! 폭탄을 클릭했습니다.");
+        }
+        
+        function handleStarClick(id) {
+            if (gameIsOver) return;
+            const obj = gameObjects[id];
+            if(!obj) return;
+            if (starSound) starSound.triggerAttackRelease("C5", "8n");
+            createParticleEffect(obj.element.offsetLeft, obj.element.offsetTop, obj.size, ['#ffd700', '#ffec8b', '#ffffff']);
+            removeObject(id);
+            activateRainbowMode();
+        }
+
+        function activateRainbowMode() {
+            if(isRainbowMode) clearTimeout(rainbowModeTimeoutId);
+            isRainbowMode = true;
+            collectedRainbowColors.clear();
+            rainbowColorIndex = 0;
+            let timeLeft = 10;
+            function updateTimer() {
+                rainbowTimerDisplay.textContent = `무지개 모드: ${timeLeft}초`;
+                if(timeLeft > 0) {
+                    timeLeft--;
+                    rainbowModeTimeoutId = setTimeout(updateTimer, 1000);
+                } else {
+                    isRainbowMode = false;
+                    rainbowTimerDisplay.textContent = '';
+                }
+            }
+            updateTimer();
+        }
+        
+        function showRainbowBonus() {
+            rainbowBg.style.opacity = '0.7';
+            setTimeout(() => { rainbowBg.style.opacity = '0'; }, 5000);
+        }
+        
+        function updateHearts() {
+            heartsContainer.textContent = '❤️'.repeat(Math.max(0, hearts));
+        }
+
+        function scheduleNextObject() {
+            if (gameIsOver) return;
+            spawnTimeoutId = setTimeout(() => {
+                const rand = Math.random();
+                if (rand < 0.05 && !isRainbowMode) { createGameObject('star'); } 
+                else if (rand < 0.20) { createGameObject('bomb'); } 
+                else { createGameObject('duck'); }
+                if (!gameIsOver) {
+                     if (score > 0 && score % 10 === 0 && currentSpawnInterval > minSpawnInterval) {
+                        currentSpawnInterval = Math.max(minSpawnInterval, currentSpawnInterval - spawnIntervalDecrement);
+                    }
+                    scheduleNextObject();
+                }
+            }, currentSpawnInterval);
+        }
+
+        function triggerGameOver(reason) {
+            if (gameIsOver) return;
+            gameIsOver = true;
+            clearTimeout(spawnTimeoutId);
+            clearTimeout(rainbowModeTimeoutId);
+            Object.keys(gameObjects).forEach(id => clearTimeout(gameObjects[id].timeoutId));
+            
+            startButton.disabled = false;
+            difficultyButtons.forEach(btn => btn.disabled = false);
+
+            gameOverReasonDisplay.textContent = reason;
+            finalScoreDisplay.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+            gameOverScreen.classList.add('flex');
+        }
+
+        function resetGame() {
+            gameBoard.querySelectorAll('.gameObject, .particle').forEach(el => el.remove());
+            gameObjects = {};
+            score = 0; hearts = 3;
+            scoreDisplay.textContent = score;
+            updateHearts();
+            currentSpawnInterval = 1500;
+            isRainbowMode = false;
+            rainbowTimerDisplay.textContent = '';
+            rainbowBg.style.opacity = '0';
+            
+            gameIsOver = false;
+            gameOverScreen.classList.add('hidden');
+            gameOverScreen.classList.remove('flex');
+            clearTimeout(spawnTimeoutId);
+            clearTimeout(rainbowModeTimeoutId);
+        }
+        
+        async function startGame() {
+            await initializeAudio();
+            resetGame();
+            startButton.disabled = true;
+            difficultyButtons.forEach(btn => btn.disabled = true);
+            scheduleNextObject();
+        }
+
+        startButton.addEventListener('click', () => { if (gameIsOver) startGame(); });
+        restartButton.addEventListener('click', startGame);
+        
+        difficultyButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (gameIsOver) {
+                    const difficulty = btn.dataset.difficulty;
+                    currentDuckLifetime = DUCK_LIFETIMES[difficulty];
+                    difficultyButtons.forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                }
+            });
+        });
+        
+        function createParticleEffect(x, y, baseSize, colors) {
+            const particleCount = 15;
+            for (let i = 0; i < particleCount; i++) {
+                const p = document.createElement('div');
+                p.classList.add('particle');
+                gameBoard.appendChild(p);
+                const pSize = Math.random() * (baseSize / 4) + (baseSize / 8);
+                p.style.cssText = `width:${pSize}px; height:${pSize}px; background-color:${colors[Math.floor(Math.random()*colors.length)]}; left:${x+baseSize/2-pSize/2}px; top:${y+baseSize/2-pSize/2}px; transform:scale(1); opacity:1;`;
+                const angle = Math.random() * Math.PI * 2, dist = Math.random() * (baseSize*1.5) + (baseSize*0.6);
+                const endX = Math.cos(angle) * dist, endY = Math.sin(angle) * dist;
+                requestAnimationFrame(() => { p.style.transform = `translate(${endX}px, ${endY}px) scale(0)`; p.style.opacity = '0'; });
+                p.addEventListener('transitionend', () => p.remove(), { once: true });
+            }
+        }
+    </script>
+</body>
+</html>
